@@ -22,3 +22,13 @@ bool Transmisor::enviar(const char* datos, uint8_t longitud) {
   // (el NRF24 sí tiene confirmación automática, a diferencia del LoRa básico)
   return radio.write(datos, longitud);
 }
+
+void Transmisor::desactivarConfirmacion() {
+  radio.setAutoAck(false);
+}
+ 
+void Transmisor::desactivarConfirmacion() {
+  radio.setAutoAck(false);   // no espera confirmación del receptor
+  radio.setRetries(0, 0);    // no reintenta si algo falla
+}
+ 

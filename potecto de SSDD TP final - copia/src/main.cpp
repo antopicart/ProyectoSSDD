@@ -4,7 +4,7 @@
 #include "DHT22.h"
 #include "LDR.h"
 #include "PaqueteDatos.h"
-#include "transmisor.h"
+#include "Transmisor.h"
 
 // ---------- Pines (ajustar según el cableado real) ----------
 #define PIN_DHT22 2
@@ -70,6 +70,44 @@ ISR(TIMER1_COMPA_vect) {
   banderaLectura = true;
 }
 
+// ---------- Función de debug ----------
+// Imprime cada sensor por separado, con etiqueta y unidad, para poder
+// chequear a simple vista si cada uno está leyendo valores razonables
+// (por ejemplo, detectar rápido si un sensor quedó en 0 o en "nan"
+// porque no está bien conectado). Es más fácil de leer que el texto
+// compacto del paquete, que está pensado para ahorrar bytes al
+// transmitir, no para que lo lea una persona.
+void imprimirDebug(float presion, float humedad, float luz, float temperatura, float altitud) {
+  Serial.println(F("----- Lectura de sensores -----"));
+
+  Serial.print(F("BMP280  -> Presion: "));
+  Serial.print(presion);
+  Serial.println(F(" hPa"));
+
+  Serial.print(F("BMP280  -> Altitud: "));
+  Serial.print(altitud);
+  Serial.println(F(" m"));
+
+  Serial.print(F("DHT22   -> Temperatura: "));
+  Serial.print(temperatura);
+  Serial.println(F(" C"));
+
+  Serial.print(F("DHT22   -> Humedad: "));
+  Serial.print(humedad);
+  Serial.println(F(" %"));
+
+  Serial.print(F("LDR     -> Luz (valor ADC 0-1023): "));
+  Serial.println(luz);
+
+  Serial.println(F("--------------------------------"));
+}
+
+// Guardamos si el módulo transmisor inicializó bien. Si no lo hizo,
+// el loop() va a evitar llamar a enviar() -- intentar transmitir con
+// un módulo que no respondió puede hacer que el programa se quede
+// esperando una respuesta que nunca llega (efecto "colgado").
+bool transmisorDisponible = false;
+
 void setup() {
   Serial.begin(9600);
 
@@ -82,9 +120,14 @@ void setup() {
     }
   }
 
-  if (!transmisor.inicializar()) {
-    Serial.println("Error: no se pudo inicializar el modulo NRF24L01");
+  transmisorDisponible = transmisor.inicializar();
+  if (!transmisorDisponible) {
+    Serial.println(F("Error: no se pudo inicializar el modulo NRF24L01 -- se omitira la transmision"));
   }
+  // --- SOLO PARA DIAGNOSTICO, sacar estas 2 lineas una vez confirmado el problema ---
+  // Si con esto el programa deja de trabarse, confirma que el cuelgue pasa durante
+  // el envio (probablemente por alimentacion insuficiente al NRF24 PA+LNA).
+  transmisor.desactivarConfirmacion();
 
   configurarTimer(); // arranca el conteo de 3 segundos por hardware
 
@@ -109,6 +152,11 @@ void loop() {
     float temperatura = sensorHumedad.leerTemperatura(); // fuente principal de temp.
     float altitud = sensorPresion.leerAltitud();
 
+    // Imprimimos cada valor por separado para verificar que los
+    // sensores estén leyendo bien (útil sobre todo ahora que están
+    // probando sin tener todo el hardware armado todavía).
+    imprimirDebug(lecturas[0], lecturas[1], lecturas[2], temperatura, altitud);
+
     // Armamos el paquete con todos los valores juntos
     paquete.actualizar(temperatura, lecturas[1], lecturas[0], altitud, lecturas[2]);
     // lecturas[1]=humedad, lecturas[0]=presión, lecturas[2]=luz (según el orden del array "sensores")
@@ -116,9 +164,19 @@ void loop() {
     const char* texto = paquete.obtenerTexto();
     Serial.println(texto); // para ver en el Monitor Serie mientras prueban
 
-    bool enviado = transmisor.enviar(texto, paquete.obtenerLongitud());
-    if (!enviado) {
-      Serial.println("Aviso: el receptor no confirmó recepción del paquete");
+    // Solo intentamos transmitir si el módulo se inicializó bien.
+    // Llamar a enviar() con un módulo que nunca respondió puede hacer
+    // que el programa quede esperando indefinidamente una respuesta
+    // por SPI que nunca va a llegar -- por eso el chequeo antes.
+    if (transmisorDisponible) {
+      bool enviado = transmisor.enviar(texto, paquete.obtenerLongitud());
+      if (enviado) {
+        Serial.println(F("Transmision OK: el receptor confirmo recepcion (ACK)"));
+      } else {
+        Serial.println(F("Aviso: el receptor no confirmo recepcion del paquete"));
+      }
+    } else {
+      Serial.println(F("Transmision omitida: modulo NRF24 no disponible"));
     }
   }
 

@@ -20,6 +20,21 @@ class Transmisor {
 
     bool inicializar();
     bool enviar(const char* datos, uint8_t longitud);
+        // Apaga la confirmación automática (auto-ack) del módulo. Con esto
+    // desactivado, enviar() devuelve true apenas logra TRANSMITIR el
+    // paquete, sin esperar ninguna respuesta del receptor -- útil
+    // mientras prueban sin tener el receptor armado todavía, para no
+    // ver avisos de "no confirmó recepción" en cada ciclo. OJO: una vez
+    // que tengan los dos módulos comunicándose de verdad, conviene
+    // volver a activarlo (no llamando a este método), porque el ACK es
+    // lo que les permite saber si un paquete realmente llegó o se perdió.
+    void desactivarConfirmacion();
+ 
+    // Método SOLO para diagnóstico: apaga la confirmación automática
+    // (auto-ack) y los reintentos, para descartar que el cuelgue sea
+    // por esperar una confirmación que nunca llega (por ejemplo, por
+    // alimentación insuficiente durante la transmisión).
+    void desactivarConfirmacion();
 };
 
 #endif
